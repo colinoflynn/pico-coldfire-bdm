@@ -215,7 +215,8 @@ class BDMCommandInterface:
                 f"Can't write register {register_number:,} - Coldfire only has"
                 f" {NUM_ADDRESS_REGISTERS} address registers!"
             )
-        return self._send_then_receive(0x2088 | register_number)
+        #return self._send_then_receive(0x2088 | register_number)
+        return self._send(0x2088 | register_number, data >> 16, data & 0xFFFF)
 
     def write_data_register(self, register_number: int, data: int):
         """
@@ -226,7 +227,8 @@ class BDMCommandInterface:
                 f"Can't write register {register_number:,} - Coldfire only has"
                 f" {NUM_DATA_REGISTERS} data registers!"
             )
-        return self._send_then_receive(0x2080 | register_number)
+        #return self._send_then_receive(0x2080 | register_number)
+        return self._send(0x2080 | register_number, data >> 16, data & 0xFFFF)
 
     def send_flash_write_enable(self):
         """
