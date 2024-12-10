@@ -1,21 +1,29 @@
+// Coldfire BDM Serial Bridge
+// by Peter Sobot (@psobot), November 8, 2022
+// Ported to R-Pi Pico by Colin O'Flynn, 2024
+
 #include <stdio.h>
 #include "pico/stdlib.h"
 
 #define PIN_LED PICO_DEFAULT_LED_PIN
 
-#define PIN_RESET 7
+// Pins are nothing special - GPIO is used for this platform.
+// The selected pins could use the SPI peripheral block in the future although it's probably
+// not needed for any reason
+
+#define PIN_RESET 0
 // Two inputs to the Coldfire:
 #define PIN_DSCLK 2
-#define PIN_DSI 2
+#define PIN_DSI 3
 
 // Trigger a breakpoint by pulling this low:
 // Low = 1, High = 0
-#define PIN_BKPT 4
+#define PIN_BKPT 5
 
 // One output from the Coldfire, which is visible a couple CPU clock cycles
 // after the fall of DSCLK. In practice, this means we only need to wait ~30
 // nanoseconds between fall of DSCLK and seeing the correct value on DSO.
-#define PIN_DSO 1
+#define PIN_DSO 4
 
 
 // Serial data is sent in 17-bit packets:
@@ -31,8 +39,11 @@ typedef struct Packet {
 // received simultaneously.
 bool sendAndReceiveBit(uint8_t bitToSend) {
   gpio_put(PIN_DSI, bitToSend);
+  //sleep_us(10);
   gpio_put(PIN_DSCLK, 1);
+  sleep_us(10);
   gpio_put(PIN_DSCLK, 0);
+  sleep_us(10);
   return gpio_get(PIN_DSO);
 }
 
@@ -98,8 +109,21 @@ void write(char * data, int len){
 
 int main() {
     stdio_init_all();
+    stdio_set_translate_crlf(&stdio_usb, false);
 
-    puts("Motorola Coldfire Debug Interface by Peter Sobot\n");
+    //WARNING: Default library needs flow control set to RTS/CTS - otherwise port will
+    // not connect. The LED turns on once port is detected in firmware.
+    while (!stdio_usb_connected());
+
+    gpio_init(PIN_LED);
+    gpio_set_dir(PIN_LED, GPIO_OUT);
+    gpio_put(PIN_LED, 1);
+
+    // Without this seems to miss initial message on USB-serial, assume it would buffer
+    // but not sure...
+    sleep_ms(100);
+
+    fputs("Motorola Coldfire Debug Interface by Peter Sobot\n", stdout);
 
     gpio_init(PIN_DSCLK);
     gpio_set_dir(PIN_DSCLK, GPIO_OUT);
@@ -110,14 +134,25 @@ int main() {
     gpio_init(PIN_DSO);
     gpio_set_dir(PIN_DSO, GPIO_IN);
 
-    puts("Ready.\n");
+    gpio_init(PIN_RESET);
+    gpio_set_dir(PIN_RESET, GPIO_IN);
+
+    gpio_init(PIN_BKPT);
+    gpio_set_dir(PIN_BKPT, GPIO_IN);
+
+    //gpio_set_drive_strength(PIN_DSCLK, 0);
+    //gpio_set_drive_strength(PIN_DSI, 0);
+
+    fputs("Ready.\n", stdout);
+    fflush(stdout);
 
     while(1){
         int command = getchar();
 
         switch (command) {
             case 'P': // for Ping
-                puts("PONG");
+                fputs("PONG", stdout);
+                fflush(stdout);
                 break;
             case 'B': // for Breakpoint
                 enterDebugMode(false);
@@ -130,6 +165,7 @@ int main() {
                 Packet packet = sendAndReceivePacket(data);
                 putchar(packet.status ? 'Y' : 'N');
                 write((char *)&packet.data, sizeof(packet.data));
+                fflush(stdout);
                 break;
             }
             case 's': { // for Send
@@ -140,6 +176,7 @@ int main() {
                 Packet packet = receivePacket();
                 putchar(packet.status ? 'Y' : 'N');
                 write((char *)&packet.data, sizeof(packet.data));
+                fflush(stdout);
                 break;
             }
         }
