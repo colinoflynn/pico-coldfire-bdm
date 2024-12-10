@@ -39,11 +39,11 @@ typedef struct Packet {
 // received simultaneously.
 bool sendAndReceiveBit(uint8_t bitToSend) {
   gpio_put(PIN_DSI, bitToSend);
-  //sleep_us(10);
+  sleep_us(1);
   gpio_put(PIN_DSCLK, 1);
-  sleep_us(10);
+  sleep_us(1);
   gpio_put(PIN_DSCLK, 0);
-  sleep_us(10);
+  sleep_us(1);
   return gpio_get(PIN_DSO);
 }
 
@@ -119,11 +119,9 @@ int main() {
     gpio_set_dir(PIN_LED, GPIO_OUT);
     gpio_put(PIN_LED, 1);
 
-    // Without this seems to miss initial message on USB-serial, assume it would buffer
-    // but not sure...
-    sleep_ms(100);
-
+    //No capital N in here for NACK-as-ready-logic
     fputs("Motorola Coldfire Debug Interface by Peter Sobot\n", stdout);
+    fputs("(Minor porting by Colin O'Flynn)\n", stdout);
 
     gpio_init(PIN_DSCLK);
     gpio_set_dir(PIN_DSCLK, GPIO_OUT);
@@ -143,6 +141,7 @@ int main() {
     //gpio_set_drive_strength(PIN_DSCLK, 0);
     //gpio_set_drive_strength(PIN_DSI, 0);
 
+    //No capital N in here for NACK-as-ready-logic
     fputs("Ready.\n", stdout);
     fflush(stdout);
 
@@ -151,32 +150,39 @@ int main() {
 
         switch (command) {
             case 'P': // for Ping
-                fputs("PONG", stdout);
-                fflush(stdout);
+                write("PONG", 4);
+                putchar('A'); //ack
                 break;
             case 'B': // for Breakpoint
                 enterDebugMode(false);
+                putchar('A'); //ack
                 break;
             case 'R': // for Reset
                 enterDebugMode(true);
+                putchar('A'); //ack
                 break;
             case 'S': { // for Send-and-Receive
                 uint16_t data = getNextTwoBytesFromUSB();
                 Packet packet = sendAndReceivePacket(data);
                 putchar(packet.status ? 'Y' : 'N');
                 write((char *)&packet.data, sizeof(packet.data));
-                fflush(stdout);
+                putchar('A'); //ack
                 break;
             }
             case 's': { // for Send
                 sendPacket(getNextTwoBytesFromUSB());
+                putchar('A'); //ack
                 break;
             }
             case 'r': { // for Receive
                 Packet packet = receivePacket();
                 putchar(packet.status ? 'Y' : 'N');
                 write((char *)&packet.data, sizeof(packet.data));
-                fflush(stdout);
+                putchar('A'); //ack
+                break;
+            }
+            default: {
+                putchar('N'); //nack
                 break;
             }
         }

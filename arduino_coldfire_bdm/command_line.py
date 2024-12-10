@@ -349,7 +349,7 @@ def main():
             parser.print_help()
             raise SystemExit(1)
         print(f"Connecting to serial port at {args.serial_port} at {args.baud_rate:,} baud...")
-        context = serial.Serial(args.serial_port, args.baud_rate, rtscts=True)
+        context = serial.Serial(args.serial_port, args.baud_rate, rtscts=True, timeout=0.1)
 
     with context as ser:
         if args.dry_run:
@@ -358,12 +358,13 @@ def main():
             interface = ColdfireSerialInterface(ser)
         bdm = BDMCommandInterface(interface)
 
-        print(f"Entering debug mode...")
+        print("Entering debug mode...")
         interface.enter_debug_mode(True)
 
         if not args.dry_run:
-            print(f"Performing consistency check on attached Coldfire processor...")
+            print("Performing consistency check on attached Coldfire processor...")
             bdm.consistency_check()
+            print("Consistency check ok! Read/Write of addresses OK, proceeding...")
 
         if not hasattr(args, "func"):
             print("No command provided; doing nothing. (Pass -h to see available commands.)")

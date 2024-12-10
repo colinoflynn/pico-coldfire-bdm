@@ -1,6 +1,7 @@
 import os
 import serial
 import struct
+import time
 
 PATH_TO_ARDUINO_SKETCH = os.path.join(os.path.dirname(__file__), "arduino-coldfire-bdm.ino")
 
@@ -23,6 +24,8 @@ class Response:
         self.status = status
         self.data = data
 
+        #print("%x"%data)
+
         if self.status == 1:
             if self.data == 0x0001:
                 raise ValueError("Coldfire responded to last-sent command with Error response")
@@ -34,25 +37,38 @@ class ColdfireSerialInterface:
     def __init__(self, serial: serial.Serial):
         """
         Wrap a pySerial object with methods to communicate with a Coldfire BDM port,
-        via an Arduino serial bridge to provide clocking.
+        via an Pico serial bridge to provide clocking.
 
-        This class is only useful for communicating with an attached Arduino -
-        see arduino-coldfire-bdm.ino for the Arduino sketch to upload.
+        This class is only useful for communicating with an attached Pico.
         """
         self.serial = serial
 
-        first_line = self.serial.readline().decode("utf-8").strip()
-        if not "Motorola Coldfire Debug Interface" in first_line:
-            raise RuntimeError(
-                "Tried to connect to Arduino, but got unexpected first line:"
-                f" {first_line}\n{DEBUG_MESSAGE}"
-            )
-        second_line = self.serial.readline().decode("utf-8").strip()
-        if not "Ready" in second_line:
-            raise RuntimeError(
-                "Tried to connect to Arduino, but got unexpected second line:"
-                f" {second_line}\n{DEBUG_MESSAGE}"
-            )
+
+        #first_line = self.serial.readline().decode("utf-8").strip()
+        #if not "Motorola Coldfire Debug Interface" in first_line:
+        #    raise RuntimeError(
+        #        "Tried to connect to Arduino, but got unexpected first line:"
+        #        f" {first_line}\n{DEBUG_MESSAGE}"
+        #    )
+        #second_line = self.serial.readline().decode("utf-8").strip()
+        #if not "Ready" in second_line:
+        #    raise RuntimeError(
+        #        "Tried to connect to Arduino, but got unexpected second line:"
+        #        f" {second_line}\n{DEBUG_MESSAGE}"
+        #    )
+
+        #Wait and flush the input (uses timeout)
+        time.sleep(0.15)
+        self.serial.reset_input_buffer()
+
+        resp = ""
+
+        while resp != b'N':
+            self.serial.write(b"?")
+            resp = self.serial.read(1)
+
+        time.sleep(0.1)
+        self.serial.reset_input_buffer()
         
         self.test_connection()
         self.test_connection()
@@ -66,6 +82,22 @@ class ColdfireSerialInterface:
                 "Sent ping to Arduino and expected to receive PONG, but got"
                 f" {repr(response)}.\n{DEBUG_MESSAGE}"
             )
+        self.check_ack()
+        
+    def check_ack(self):
+        """ Checks for 'A' character after a command (ack) """
+
+        for i in range(0, 10):
+            data = self.serial.read(1)
+
+            if data == b"A":
+                return
+            
+            if len(data) > 0:
+                break
+        
+        raise IOError("ACK problem, expected 'A', got %d bytes: %s"%(len(data), str(data)))
+
 
     def send_packet(self, data: int):
         """
@@ -73,6 +105,7 @@ class ColdfireSerialInterface:
         The response will not be read automatically; use `receive_packet` to get the subsequent response.
         """
         self.serial.write(b"s" + struct.pack(">H", data))
+        self.check_ack()
 
     def receive_packet(self) -> Response:
         """
@@ -83,17 +116,19 @@ class ColdfireSerialInterface:
         last packet.
         """
         self.serial.write(b"r")
-        return self._receive_packet()
+        data = self._receive_packet()
+        self.check_ack()
+        return data
 
     def _receive_packet(self) -> Response:
         response = self.serial.read(3)
         # The Arduino serial bridge translates the 17-bit packet into
         # 24 bits for us: 8 bits for the status bit, and then the original
         # 16 bits of the data word.
-        if response[0] != ord("N") and response[0] != ord("Y"):
-            raise IOError("response[0]" + str(response[0]))
+        if response[0] != ord('N') and response[0] != ord('Y'):
+            raise IOError("response[0]: " + str(response[0]))
 
-        status = int(response[0] == ord("N"))
+        status = int(response[0] == ord('Y'))
         data = struct.unpack("<H", response[1:])[0]
         return Response(status, data)
 
@@ -105,7 +140,9 @@ class ColdfireSerialInterface:
         command isn't required before sending the next command.
         """
         self.serial.write(b"S" + struct.pack(">H", data))
-        return self._receive_packet()
+        data = self._receive_packet()
+        self.check_ack()
+        return data
 
     def enter_debug_mode(self, reset=False):
         """
@@ -119,6 +156,7 @@ class ColdfireSerialInterface:
         else:
             # B for Breakpoint
             self.serial.write(b"B")
+        self.check_ack()
 
 
 class MockColdfireSerialInterface:
