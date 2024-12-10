@@ -349,7 +349,7 @@ def main():
             parser.print_help()
             raise SystemExit(1)
         print(f"Connecting to serial port at {args.serial_port} at {args.baud_rate:,} baud...")
-        context = serial.Serial(args.serial_port, args.baud_rate)
+        context = serial.Serial(args.serial_port, args.baud_rate, rtscts=True)
 
     with context as ser:
         if args.dry_run:

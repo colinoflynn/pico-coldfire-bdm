@@ -53,6 +53,10 @@ class ColdfireSerialInterface:
                 "Tried to connect to Arduino, but got unexpected second line:"
                 f" {second_line}\n{DEBUG_MESSAGE}"
             )
+        
+        self.test_connection()
+        self.test_connection()
+        self.test_connection()
 
     def test_connection(self):
         self.serial.write(b"P")
@@ -86,7 +90,10 @@ class ColdfireSerialInterface:
         # The Arduino serial bridge translates the 17-bit packet into
         # 24 bits for us: 8 bits for the status bit, and then the original
         # 16 bits of the data word.
-        status = int(response[0] == b"N")
+        if response[0] != ord("N") and response[0] != ord("Y"):
+            raise IOError("response[0]" + str(response[0]))
+
+        status = int(response[0] == ord("N"))
         data = struct.unpack("<H", response[1:])[0]
         return Response(status, data)
 
